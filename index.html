@@ -3,24 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Infinite Adventure</title>
+    <title>Koji Pro Adventure</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; }
-        canvas { border: 3px solid #fff; max-width: 95%; height: auto; background-color: #4dbfff; }
-        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px black; z-index: 10; pointer-events: none; }
-        .hearts { color: #ff4d4d; font-size: 24px; margin-top: 5px; }
-        .controls { position: fixed; bottom: 20px; right: 20px; display: grid; grid-template-columns: repeat(3, 65px); gap: 10px; }
-        .btn { background: rgba(255,255,255,0.3); border: 2px solid #fff; border-radius: 10px; height: 65px; display: flex; justify-content: center; align-items: center; color: white; font-size: 25px; user-select: none; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); background-color: #4dbfff; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; z-index: 10; pointer-events: none; }
+        .score-box { background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 50px; border: 2px solid gold; font-weight: bold; font-size: 18px; }
+        .hearts { font-size: 24px; margin-top: 10px; filter: drop-shadow(2px 2px 2px black); }
+        .controls { position: fixed; bottom: 30px; right: 30px; display: grid; grid-template-columns: repeat(3, 75px); gap: 15px; }
+        .btn { background: rgba(255,255,255,0.2); backdrop-filter: blur(5px); border: 2px solid #fff; border-radius: 50%; height: 75px; display: flex; justify-content: center; align-items: center; color: white; font-size: 30px; user-select: none; transition: 0.1s; }
+        .btn:active { transform: scale(0.9); background: rgba(255,255,255,0.5); }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <div style="font-size: 20px;">🍌 Skor: <span id="score">0</span></div>
-    <div class="hearts" id="lives">❤️ ❤️ ❤️</div>
+    <div class="score-box">🍌 BANANA: <span id="score">0</span></div>
+    <div class="hearts" id="lives">❤️❤️❤️</div>
 </div>
 
-<canvas id="gameCanvas" width="800" height="600"></canvas>
+<canvas id="gameCanvas"></canvas>
 
 <div class="controls">
     <div class="btn" style="grid-column: 2" id="btnUp">▲</div>
@@ -32,11 +34,14 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
+    // Setup Canvas Size
+    canvas.width = window.innerWidth > 800 ? 800 : window.innerWidth;
+    canvas.height = window.innerHeight > 600 ? 600 : window.innerHeight;
+
     const img = {
         koji: new Image(), banana: new Image(), enemy: new Image(),
         stone: new Image(), bg: new Image(), ramuan: new Image()
     };
-    
     img.koji.src = 'koji.png';
     img.banana.src = 'banana.png';
     img.enemy.src = 'enemy.png';
@@ -48,146 +53,189 @@
     let lives = 3;
     let invul = 0;
     let tick = 0;
+    let particles = [];
     let keys = {};
 
-    let koji = { x: 50, y: 500, w: 70, h: 70, dy: 0, jump: -18, speed: 6, g: 0.8, grounded: false };
+    // World Settings
+    const worldHeight = 3000; // Map sangat tinggi ke atas
+    let cameraY = worldHeight - canvas.height;
 
-    // Lantai Bertingkat & Bergerak
-    let platforms = [
-        { x: 0, y: 580, w: 800, h: 20, move: false }, 
-        { x: 100, y: 480, w: 200, h: 15, move: true, speed: 2, range: 300, startX: 100 }, 
-        { x: 450, y: 380, w: 200, h: 15, move: false },
-        { x: 150, y: 280, w: 200, h: 15, move: true, speed: -2.5, range: 300, startX: 150 },
-        { x: 500, y: 180, w: 200, h: 15, move: false },
-        { x: 200, y: 80, w: 400, h: 15, move: false }
-    ];
+    let koji = { x: canvas.width/2, y: worldHeight - 150, w: 70, h: 70, dy: 0, jump: -20, speed: 7, g: 0.9, grounded: false };
 
-    // Pisang (Sekarang otomatis muncul lagi kalau habis)
-    let bananas = [
-        { x: 150, y: 430, w: 40, h: 40 },
-        { x: 500, y: 330, w: 40, h: 40 },
-        { x: 300, y: 130, w: 40, h: 40 }
-    ];
+    // Platform Generator (Banyak Lantai)
+    let platforms = [];
+    for(let i = 0; i < 20; i++) {
+        platforms.push({
+            x: Math.random() * (canvas.width - 150),
+            y: (worldHeight - 100) - (i * 150),
+            w: 150 + Math.random() * 100,
+            h: 20,
+            move: Math.random() > 0.7,
+            speed: (Math.random() - 0.5) * 4,
+            startX: 0
+        });
+    }
+    platforms[0] = { x: 0, y: worldHeight - 30, w: canvas.width, h: 40, move: false }; // Dasar
 
-    let potions = [
-        { x: 700, y: 40, w: 45, h: 45, active: true }
-    ];
+    // Items & Enemies
+    let bananas = [];
+    platforms.forEach((p, i) => {
+        if(i > 0) bananas.push({ x: p.x + p.w/2 - 20, y: p.y - 50, w: 40, h: 40 });
+    });
 
-    let enemies = [
-        { x: 450, y: 335, w: 50, h: 50, speed: 2, range: 150, startX: 450 },
-        { x: 100, y: 530, w: 50, h: 50, speed: 1.5, range: 500, startX: 100 }
-    ];
+    let potion = { x: 200, y: worldHeight - 1000, w: 45, h: 45, active: true };
+    let enemies = [];
+    for(let i=1; i<10; i++) {
+        enemies.push({ x: Math.random() * 600, y: worldHeight - (i * 350), w: 50, h: 50, speed: 2 + Math.random()*2, range: 200, startX: 0 });
+    }
 
+    // Controls
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
 
-    function handleBtn(id, code) {
+    function setupCtrl(id, code) {
         const b = document.getElementById(id);
         b.onmousedown = b.ontouchstart = (e) => { e.preventDefault(); keys[code] = true; };
         b.onmouseup = b.ontouchend = (e) => { e.preventDefault(); keys[code] = false; };
     }
-    handleBtn('btnUp', 'ArrowUp'); handleBtn('btnLeft', 'ArrowLeft'); handleBtn('btnRight', 'ArrowRight');
+    setupCtrl('btnUp', 'ArrowUp'); setupCtrl('btnLeft', 'ArrowLeft'); setupCtrl('btnRight', 'ArrowRight');
+
+    // Particle Effect System
+    function spawnParticles(x, y, color) {
+        for(let i=0; i<10; i++) {
+            particles.push({
+                x: x, y: y,
+                dx: (Math.random() - 0.5) * 8,
+                dy: (Math.random() - 0.5) * 8,
+                life: 30,
+                color: color
+            });
+        }
+    }
 
     function update() {
         tick++;
-        if (invul > 0) invul--;
+        if(invul > 0) invul--;
 
-        if (keys['ArrowLeft'] && koji.x > 0) koji.x -= koji.speed;
-        if (keys['ArrowRight'] && koji.x < canvas.width - koji.w) koji.x += koji.speed;
-        if (keys['ArrowUp'] && koji.grounded) { koji.dy = koji.jump; koji.grounded = false; }
+        // Movement
+        if(keys['ArrowLeft'] && koji.x > 0) koji.x -= koji.speed;
+        if(keys['ArrowRight'] && koji.x < canvas.width - koji.w) koji.x += koji.speed;
+        if(keys['ArrowUp'] && koji.grounded) { koji.dy = koji.jump; koji.grounded = false; }
 
         koji.dy += koji.g;
         koji.y += koji.dy;
 
+        // Platform & Movement Logic
         koji.grounded = false;
         platforms.forEach(p => {
-            if (p.move) {
+            if(p.move) {
+                if(p.startX === 0) p.startX = p.x;
                 p.x += p.speed;
-                if (p.x > p.startX + p.range || p.x < p.startX) p.speed *= -1;
+                if(p.x > canvas.width - p.w || p.x < 0) p.speed *= -1;
             }
 
-            if (koji.dy >= 0 && koji.y + koji.h <= p.y + p.h && koji.y + koji.h >= p.y - 5 &&
-                koji.x + koji.w > p.x && koji.x < p.x + p.w) {
+            if(koji.dy >= 0 && koji.y + koji.h <= p.y + p.h && koji.y + koji.h >= p.y - 10 &&
+               koji.x + koji.w > p.x && koji.x < p.x + p.w) {
                 koji.y = p.y - koji.h;
                 koji.dy = 0;
                 koji.grounded = true;
-                if (p.move) koji.x += p.speed; // Ikut gerak lantai
+                if(p.move) koji.x += p.speed;
             }
         });
 
-        // Musuh & Nyawa
-        enemies.forEach(e => {
-            e.x += e.speed;
-            if (e.x > e.startX + e.range || e.x < e.startX) e.speed *= -1;
-            if (invul === 0 && koji.x < e.x + e.w && koji.x + koji.w > e.x && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
-                lives--;
-                invul = 60;
-                updateHearts();
-                if (lives <= 0) { alert("Game Over!"); location.reload(); }
-            }
-        });
+        // Camera Follow (Smooth)
+        let targetCamY = koji.y - canvas.height / 2;
+        cameraY += (targetCamY - cameraY) * 0.1;
+        if(cameraY < 0) cameraY = 0;
+        if(cameraY > worldHeight - canvas.height) cameraY = worldHeight - canvas.height;
 
-        // LOGIKA RESPAWN PISANG
+        // Items
         bananas.forEach((b, i) => {
-            b.animY = b.y + Math.sin((tick + i * 20) * 0.1) * 8;
-            if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.animY + b.h && koji.y + koji.h > b.animY) {
+            let bounce = Math.sin(tick * 0.1 + i) * 5;
+            if(koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.y + b.h + bounce && koji.y + koji.h > b.y + bounce) {
                 score++;
                 document.getElementById('score').innerText = score;
-                // Pindahkan ke lokasi acak di salah satu platform
-                let targetP = platforms[Math.floor(Math.random() * (platforms.length - 1)) + 1];
-                b.x = targetP.x + Math.random() * (targetP.w - b.w);
-                b.y = targetP.y - 50;
+                spawnParticles(b.x + 20, b.y + 20, 'gold');
+                b.y -= 500; // Move up for pseudo-respawn
+                if(b.y < 0) b.y = worldHeight - 100;
             }
         });
 
-        // Ramuan
-        potions.forEach(p => {
-            if (p.active && koji.x < p.x + p.w && koji.x + koji.w > p.x && koji.y < p.y + p.h && koji.y + koji.h > p.y) {
-                if (lives < 3) {
-                    lives++;
-                    p.active = false;
-                    updateHearts();
-                    // Munculkan lagi ramuan setelah 15 detik
-                    setTimeout(() => { p.active = true; }, 15000);
-                }
+        // Enemies
+        enemies.forEach(e => {
+            if(e.startX === 0) e.startX = e.x;
+            e.x += e.speed;
+            if(e.x > e.startX + e.range || e.x < e.startX || e.x > canvas.width - e.w || e.x < 0) e.speed *= -1;
+            
+            if(invul === 0 && koji.x < e.x + e.w && koji.x + koji.w > e.x && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
+                lives--;
+                invul = 60;
+                spawnParticles(koji.x + 35, koji.y + 35, 'red');
+                let h = ""; for(let i=0; i<lives; i++) h += "❤️";
+                document.getElementById('lives').innerText = h;
+                if(lives <= 0) location.reload();
             }
         });
-    }
 
-    function updateHearts() {
-        let hStr = ""; for(let i=0; i<lives; i++) hStr += "❤️ ";
-        document.getElementById('lives').innerText = hStr;
+        // Potion
+        if(potion.active && koji.x < potion.x + potion.w && koji.x + koji.w > potion.x && koji.y < potion.y + potion.h && koji.y + koji.h > potion.y) {
+            if(lives < 3) { lives++; potion.active = false; }
+            spawnParticles(potion.x+20, potion.y+20, 'lime');
+        }
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.dx; p.y += p.dy; p.life--;
+            if(p.life <= 0) particles.splice(i, 1);
+        });
     }
 
     function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (img.bg.complete) ctx.drawImage(img.bg, 0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(0, -cameraY);
 
+        // 1. Background Parallax
+        if(img.bg.complete) {
+            ctx.drawImage(img.bg, 0, cameraY * 0.5, canvas.width, canvas.height);
+        }
+
+        // 2. Platforms
         platforms.forEach(p => {
-            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.fillStyle = "rgba(0,0,0,0.3)";
             ctx.fillRect(p.x, p.y, p.w, p.h);
-            if (img.stone.complete) {
-                for(let x=p.x; x<p.x+p.w; x+=30) ctx.drawImage(img.stone, x, p.y, 30, p.h);
+            if(img.stone.complete) {
+                for(let x=p.x; x<p.x+p.w; x+=40) ctx.drawImage(img.stone, x, p.y, 40, p.h);
             }
         });
 
-        bananas.forEach(b => { 
-            if (img.banana.complete) ctx.drawImage(img.banana, b.x, b.animY || b.y, b.w, b.h); 
+        // 3. Items
+        bananas.forEach(b => {
+            let bounce = Math.sin(tick * 0.1) * 5;
+            if(img.banana.complete) ctx.drawImage(img.banana, b.x, b.y + bounce, b.w, b.h);
+        });
+        if(potion.active && img.ramuan.complete) ctx.drawImage(img.ramuan, potion.x, potion.y, potion.width || 40, potion.height || 40);
+
+        // 4. Enemies
+        enemies.forEach(e => {
+            if(img.enemy.complete) ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h);
         });
 
-        potions.forEach(p => {
-            if (p.active && img.ramuan.complete) ctx.drawImage(img.ramuan, p.x, p.y, p.w, p.h);
-        });
-
-        enemies.forEach(e => { if (img.enemy.complete) ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h); });
-
-        if (invul % 10 < 5 && img.koji.complete) {
+        // 5. Koji
+        if(invul % 10 < 5 && img.koji.complete) {
             ctx.drawImage(img.koji, koji.x, koji.y, koji.w, koji.h);
         }
+
+        // 6. Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        });
+
+        ctx.restore();
     }
 
-    function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
-    img.bg.onload = gameLoop;
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    img.bg.onload = loop;
 </script>
 </body>
 </html>
