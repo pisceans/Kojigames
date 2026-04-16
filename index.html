@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Pro Adventure</title>
+    <title>Koji Infinite Adventure</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; }
         canvas { border: 3px solid #fff; max-width: 95%; height: auto; background-color: #4dbfff; }
@@ -52,30 +52,30 @@
 
     let koji = { x: 50, y: 500, w: 70, h: 70, dy: 0, jump: -18, speed: 6, g: 0.8, grounded: false };
 
-    // LANTAI BERTINGKAT & BERGERAK
+    // Lantai Bertingkat & Bergerak
     let platforms = [
-        { x: 0, y: 580, w: 800, h: 20, move: false }, // Tanah Dasar
-        { x: 100, y: 480, w: 150, h: 15, move: true, speed: 2, range: 200, startX: 100 }, 
-        { x: 450, y: 400, w: 200, h: 15, move: false },
-        { x: 200, y: 300, w: 150, h: 15, move: true, speed: 3, range: 300, startX: 200 },
-        { x: 500, y: 200, w: 200, h: 15, move: false },
-        { x: 100, y: 120, w: 150, h: 15, move: true, speed: 2.5, range: 400, startX: 100 },
-        { x: 600, y: 60, w: 150, h: 15, move: false } // Puncak
+        { x: 0, y: 580, w: 800, h: 20, move: false }, 
+        { x: 100, y: 480, w: 200, h: 15, move: true, speed: 2, range: 300, startX: 100 }, 
+        { x: 450, y: 380, w: 200, h: 15, move: false },
+        { x: 150, y: 280, w: 200, h: 15, move: true, speed: -2.5, range: 300, startX: 150 },
+        { x: 500, y: 180, w: 200, h: 15, move: false },
+        { x: 200, y: 80, w: 400, h: 15, move: false }
     ];
 
+    // Pisang (Sekarang otomatis muncul lagi kalau habis)
     let bananas = [
-        { x: 500, y: 350, w: 35, h: 35, collected: false },
-        { x: 250, y: 250, w: 35, h: 35, collected: false },
-        { x: 650, y: 20, w: 35, h: 35, collected: false }
+        { x: 150, y: 430, w: 40, h: 40 },
+        { x: 500, y: 330, w: 40, h: 40 },
+        { x: 300, y: 130, w: 40, h: 40 }
     ];
 
     let potions = [
-        { x: 550, y: 150, w: 40, h: 40, collected: false } // Ramuan Emas
+        { x: 700, y: 40, w: 45, h: 45, active: true }
     ];
 
     let enemies = [
-        { x: 450, y: 355, w: 45, h: 45, speed: 2, range: 150, startX: 450 },
-        { x: 100, y: 535, w: 45, h: 45, speed: 1.5, range: 400, startX: 100 }
+        { x: 450, y: 335, w: 50, h: 50, speed: 2, range: 150, startX: 450 },
+        { x: 100, y: 530, w: 50, h: 50, speed: 1.5, range: 500, startX: 100 }
     ];
 
     window.addEventListener('keydown', e => keys[e.code] = true);
@@ -101,12 +101,9 @@
 
         koji.grounded = false;
         platforms.forEach(p => {
-            // Update Gerakan Lantai
             if (p.move) {
                 p.x += p.speed;
                 if (p.x > p.startX + p.range || p.x < p.startX) p.speed *= -1;
-                // Koji ikut bergerak jika di atas lantai
-                if (koji.grounded && koji.y + koji.h === p.y) koji.x += p.speed;
             }
 
             if (koji.dy >= 0 && koji.y + koji.h <= p.y + p.h && koji.y + koji.h >= p.y - 5 &&
@@ -114,9 +111,11 @@
                 koji.y = p.y - koji.h;
                 koji.dy = 0;
                 koji.grounded = true;
+                if (p.move) koji.x += p.speed; // Ikut gerak lantai
             }
         });
 
+        // Musuh & Nyawa
         enemies.forEach(e => {
             e.x += e.speed;
             if (e.x > e.startX + e.range || e.x < e.startX) e.speed *= -1;
@@ -128,20 +127,29 @@
             }
         });
 
+        // LOGIKA RESPAWN PISANG
         bananas.forEach((b, i) => {
-            if (!b.collected) {
-                b.animY = b.y + Math.sin((tick + i * 20) * 0.1) * 8;
-                if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.animY + b.h && koji.y + koji.h > b.animY) {
-                    b.collected = true; score++; document.getElementById('score').innerText = score;
-                }
+            b.animY = b.y + Math.sin((tick + i * 20) * 0.1) * 8;
+            if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.animY + b.h && koji.y + koji.h > b.animY) {
+                score++;
+                document.getElementById('score').innerText = score;
+                // Pindahkan ke lokasi acak di salah satu platform
+                let targetP = platforms[Math.floor(Math.random() * (platforms.length - 1)) + 1];
+                b.x = targetP.x + Math.random() * (targetP.w - b.w);
+                b.y = targetP.y - 50;
             }
         });
 
+        // Ramuan
         potions.forEach(p => {
-            if (!p.collected && koji.x < p.x + p.w && koji.x + koji.w > p.x && koji.y < p.y + p.h && koji.y + koji.h > p.y) {
-                p.collected = true;
-                if (lives < 3) lives++;
-                updateHearts();
+            if (p.active && koji.x < p.x + p.w && koji.x + koji.w > p.x && koji.y < p.y + p.h && koji.y + koji.h > p.y) {
+                if (lives < 3) {
+                    lives++;
+                    p.active = false;
+                    updateHearts();
+                    // Munculkan lagi ramuan setelah 15 detik
+                    setTimeout(() => { p.active = true; }, 15000);
+                }
             }
         });
     }
@@ -164,11 +172,11 @@
         });
 
         bananas.forEach(b => { 
-            if (!b.collected && img.banana.complete) ctx.drawImage(img.banana, b.x, b.animY || b.y, b.w, b.h); 
+            if (img.banana.complete) ctx.drawImage(img.banana, b.x, b.animY || b.y, b.w, b.h); 
         });
 
         potions.forEach(p => {
-            if (!p.collected && img.ramuan.complete) ctx.drawImage(img.ramuan, p.x, p.y, p.w, p.h);
+            if (p.active && img.ramuan.complete) ctx.drawImage(img.ramuan, p.x, p.y, p.w, p.h);
         });
 
         enemies.forEach(e => { if (img.enemy.complete) ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h); });
