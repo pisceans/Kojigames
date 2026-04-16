@@ -3,217 +3,416 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Pro Adventure</title>
+    <title>Koji Pro Adventure - Ultimate Edition</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
-        canvas { border: 2px solid #fff; max-width: 100%; height: auto; background-color: #4dbfff; }
-        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px black; z-index: 10; pointer-events: none; }
-        .score { font-size: 22px; font-weight: bold; }
-        .hearts { color: #ff4d4d; font-size: 26px; margin-top: 5px; }
-        .controls { position: fixed; bottom: 20px; right: 20px; display: grid; grid-template-columns: repeat(3, 70px); gap: 10px; }
-        .btn { background: rgba(255,255,255,0.2); border: 2px solid #fff; border-radius: 15px; height: 70px; display: flex; justify-content: center; align-items: center; color: white; font-size: 30px; user-select: none; }
-        .btn:active { background: rgba(255,255,255,0.5); }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background-color: #050505; 
+            display: flex; justify-content: center; align-items: center; 
+            height: 100vh; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+        }
+        canvas { 
+            border: 4px solid #333; 
+            box-shadow: 0 0 50px rgba(0,0,0,0.8); 
+            background-color: #4dbfff;
+            max-width: 100%;
+            height: auto;
+            image-rendering: pixelated;
+        }
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+        }
+        .stats-container {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px; border-radius: 15px;
+            border: 2px solid rgba(255, 215, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+        .score-label { color: gold; font-size: 24px; font-weight: bold; letter-spacing: 1px; }
+        .lives-label { color: #ff4d4d; font-size: 28px; margin-top: 5px; }
+        
+        /* Pro Mobile Controls */
+        .controls-overlay {
+            position: fixed; bottom: 30px; width: 100%;
+            display: flex; justify-content: space-between; padding: 0 30px;
+            pointer-events: none;
+        }
+        .d-pad, .action-pad { pointer-events: auto; display: flex; gap: 15px; }
+        .control-btn {
+            width: 85px; height: 85px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 35px;
+            backdrop-filter: blur(8px);
+            transition: transform 0.1s, background 0.1s;
+        }
+        .control-btn:active { transform: scale(0.85); background: rgba(255, 255, 255, 0.4); }
+        
+        @media (max-width: 600px) {
+            .control-btn { width: 70px; height: 70px; font-size: 28px; }
+        }
     </style>
 </head>
 <body>
 
-<div id="ui">
-    <div class="score">🍌 SCORE: <span id="scoreText">0</span></div>
-    <div class="hearts" id="livesText">❤️ ❤️ ❤️</div>
+<div id="ui-layer">
+    <div class="stats-container">
+        <div class="score-label">🍌 SCORE: <span id="scoreVal">0</span></div>
+        <div class="lives-label" id="livesVal">❤️❤️❤️</div>
+    </div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
-<div class="controls">
-    <div class="btn" style="grid-column: 2" id="btnUp">▲</div>
-    <div class="btn" style="grid-column: 1; grid-row: 2" id="btnLeft">◀</div>
-    <div class="btn" style="grid-column: 3; grid-row: 2" id="btnRight">▶</div>
+<div class="controls-overlay">
+    <div class="d-pad">
+        <div class="control-btn" id="btnLeft">◀</div>
+        <div class="control-btn" id="btnRight">▶</div>
+    </div>
+    <div class="action-pad">
+        <div class="control-btn" id="btnUp" style="background: rgba(255, 215, 0, 0.2); border-color: gold;">▲</div>
+    </div>
 </div>
 
 <script>
+    /**
+     * KOJI PRO ADVENTURE - CORE ENGINE
+     * Versi 2.0: Optimized Physics & Infinite Climbing
+     */
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Ukuran Layar
-    canvas.width = 800;
-    canvas.height = 600;
+    // 1. Konfigurasi Resolusi (Biar tajam di semua device)
+    const baseW = 800;
+    const baseH = 600;
+    canvas.width = baseW;
+    canvas.height = baseH;
 
-    const img = {
+    // 2. Asset Loader
+    const assets = {
         koji: new Image(), banana: new Image(), enemy: new Image(),
         stone: new Image(), bg: new Image(), ramuan: new Image()
     };
-    img.koji.src = 'koji.png';
-    img.banana.src = 'banana.png';
-    img.enemy.src = 'enemy.png';
-    img.stone.src = 'stone.png';
-    img.bg.src = 'background.png';
-    img.ramuan.src = 'ramuan.png';
+    assets.koji.src = 'koji.png';
+    assets.banana.src = 'banana.png';
+    assets.enemy.src = 'enemy.png';
+    assets.stone.src = 'stone.png';
+    assets.bg.src = 'background.png';
+    assets.ramuan.src = 'ramuan.png';
 
+    // 3. Game State & Variables
     let score = 0;
     let lives = 3;
-    let invul = 0;
-    let tick = 0;
+    let isInvulnerable = 0;
+    let gameFrame = 0;
     let keys = {};
     let particles = [];
+    
+    // World Config (Ketinggian 5000px agar bisa memanjat lama)
+    const worldWidth = 800;
+    const worldHeight = 5000;
+    let cameraY = worldHeight - baseH;
+    let smoothCamY = cameraY;
 
-    // Map Settings
-    const worldHeight = 2500;
-    let cameraY = worldHeight - canvas.height;
+    // 4. Entitas Utama: Koji
+    const koji = {
+        x: 400, y: worldHeight - 150,
+        w: 75, h: 75,
+        vx: 0, vy: 0,
+        speed: 8,
+        jumpPower: -22,
+        gravity: 0.95,
+        friction: 0.85,
+        grounded: false,
+        direction: 'right'
+    };
 
-    let koji = { x: 400, y: worldHeight - 150, w: 70, h: 70, dy: 0, jump: -20, speed: 7, g: 0.9, grounded: false };
-
-    // Buat Platform Bertingkat & Bergerak
+    // 5. Procedural Level Design (Platform Logic)
     let platforms = [];
-    for(let i = 0; i < 15; i++) {
-        platforms.push({
-            x: Math.random() * 600,
-            y: (worldHeight - 150) - (i * 160),
-            w: 180, h: 25,
-            move: i % 3 === 0 && i !== 0,
-            speed: 2,
-            startX: 0
-        });
+    function generateLevel() {
+        platforms = [];
+        // Dasar Tanah
+        platforms.push({ x: 0, y: worldHeight - 40, w: worldWidth, h: 60, type: 'ground' });
+
+        let currentY = worldHeight - 200;
+        while (currentY > 100) {
+            let width = 160 + Math.random() * 100;
+            platforms.push({
+                x: Math.random() * (worldWidth - width),
+                y: currentY,
+                w: width, h: 30,
+                move: Math.random() > 0.7,
+                mDir: 1,
+                mRange: 150 + Math.random() * 200,
+                startX: 0,
+                type: 'platform'
+            });
+            // Gap vertikal diatur agar lompatan (jumpPower -22) selalu sampai
+            currentY -= 160 + Math.random() * 40; 
+        }
     }
-    platforms[0] = { x: 0, y: worldHeight - 40, w: 800, h: 40, move: false }; // Tanah dasar
+    generateLevel();
 
-    // Items
-    let bananas = platforms.map((p, i) => ({ x: p.x + 70, y: p.y - 50, w: 40, h: 40, active: i !== 0 }));
-    let potion = { x: 400, y: worldHeight - 1200, w: 45, h: 45, active: true };
-
-    // Enemies
+    // 6. Items & Enemies Management
+    let bananas = [];
     let enemies = [];
-    for(let i = 1; i < 8; i++) {
-        enemies.push({ x: Math.random() * 600, y: worldHeight - (i * 300), w: 55, h: 55, speed: 2, range: 200, startX: 0 });
-    }
+    let potion = { x: 0, y: 0, w: 50, h: 50, active: false };
 
-    // Controls
+    function initSpawns() {
+        bananas = []; enemies = [];
+        platforms.forEach((p, i) => {
+            if (i === 0) return;
+            // Taruh pisang di tengah platform
+            bananas.push({ 
+                x: p.x + (p.w / 2) - 20, y: p.y - 60, 
+                w: 45, h: 45, active: true, id: i 
+            });
+            
+            // Taruh musuh di beberapa platform secara acak
+            if (i > 3 && i % 4 === 0) {
+                enemies.push({
+                    x: p.x, y: p.y - 55, w: 55, h: 55,
+                    startX: p.x, range: p.w - 55,
+                    speed: 2 + Math.random() * 2, dir: 1
+                });
+            }
+        });
+        // Taruh satu ramuan di ketinggian tengah
+        potion = { x: 300, y: worldHeight / 2, w: 50, h: 50, active: true };
+    }
+    initSpawns();
+
+    // 7. Input Handler
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
 
-    function setupBtn(id, code) {
-        const b = document.getElementById(id);
-        b.onmousedown = b.ontouchstart = (e) => { e.preventDefault(); keys[code] = true; };
-        b.onmouseup = b.ontouchend = (e) => { e.preventDefault(); keys[code] = false; };
+    function setupMobile(id, code) {
+        const el = document.getElementById(id);
+        const start = (e) => { e.preventDefault(); keys[code] = true; };
+        const end = (e) => { e.preventDefault(); keys[code] = false; };
+        el.addEventListener('touchstart', start); el.addEventListener('touchend', end);
+        el.addEventListener('mousedown', start); el.addEventListener('mouseup', end);
     }
-    setupBtn('btnUp', 'ArrowUp'); setupBtn('btnLeft', 'ArrowLeft'); setupBtn('btnRight', 'ArrowRight');
+    setupMobile('btnLeft', 'ArrowLeft'); setupMobile('btnRight', 'ArrowRight'); setupMobile('btnUp', 'ArrowUp');
 
-    function createExplosion(x, y, color) {
-        for(let i=0; i<8; i++) {
-            particles.push({ x, y, dx: (Math.random()-0.5)*10, dy: (Math.random()-0.5)*10, life: 20, color });
+    // 8. Particle System (The "Pro" Touch)
+    function spawnEffect(x, y, color, count = 10) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 12,
+                vy: (Math.random() - 0.5) * 12,
+                size: 3 + Math.random() * 5,
+                life: 1.0,
+                decay: 0.02 + Math.random() * 0.03,
+                color
+            });
         }
     }
 
+    // 9. Core Update Loop
     function update() {
-        tick++;
-        if(invul > 0) invul--;
+        gameFrame++;
+        if (isInvulnerable > 0) isInvulnerable--;
 
-        if(keys['ArrowLeft'] && koji.x > 0) koji.x -= koji.speed;
-        if(keys['ArrowRight'] && koji.x < canvas.width - koji.w) koji.x += koji.speed;
-        if(keys['ArrowUp'] && koji.grounded) { koji.dy = koji.jump; koji.grounded = false; }
+        // Horizontal Movement with Friction
+        if (keys['ArrowLeft']) { koji.vx = -koji.speed; koji.direction = 'left'; }
+        else if (keys['ArrowRight']) { koji.vx = koji.speed; koji.direction = 'right'; }
+        else { koji.vx *= koji.friction; }
 
-        koji.dy += koji.g;
-        koji.y += koji.dy;
+        koji.x += koji.vx;
+        
+        // Vertical Physics
+        koji.vy += koji.gravity;
+        koji.y += koji.vy;
 
-        // Platform Logic
+        // Collision: World Bounds
+        if (koji.x < 0) koji.x = 0;
+        if (koji.x > worldWidth - koji.w) koji.x = worldWidth - koji.w;
+
+        // Collision: Platforms
         koji.grounded = false;
         platforms.forEach(p => {
-            if(p.move) {
-                if(p.startX === 0) p.startX = p.x;
-                p.x += p.speed;
-                if(p.x > 620 || p.x < 0) p.speed *= -1;
+            // Bergerakkan platform
+            if (p.move) {
+                if (p.startX === 0) p.startX = p.x;
+                p.x += p.speed * p.mDir;
+                if (p.x > p.startX + p.mRange || p.x < p.startX - 50) p.mDir *= -1;
             }
-            if(koji.dy >= 0 && koji.y + koji.h <= p.y + p.h && koji.y + koji.h >= p.y - 10 &&
-               koji.x + koji.w > p.x && koji.x < p.x + p.w) {
+
+            // Cek Tabrakan dari Atas (Landing)
+            if (koji.vy >= 0 && 
+                koji.y + koji.h >= p.y && koji.y + koji.h <= p.y + p.h + 10 &&
+                koji.x + koji.w * 0.8 > p.x && koji.x + koji.w * 0.2 < p.x + p.w) {
                 koji.y = p.y - koji.h;
-                koji.dy = 0;
+                koji.vy = 0;
                 koji.grounded = true;
-                if(p.move) koji.x += p.speed;
+                if (p.move) koji.x += p.speed * p.mDir; // Ikut gerak platform
             }
         });
 
-        // Camera Follow
-        let targetCam = koji.y - canvas.height / 2;
-        cameraY += (targetCam - cameraY) * 0.1;
-        if(cameraY < 0) cameraY = 0;
-        if(cameraY > worldHeight - canvas.height) cameraY = worldHeight - canvas.height;
+        // Jump Logic
+        if (keys['ArrowUp'] && koji.grounded) {
+            koji.vy = koji.jumpPower;
+            koji.grounded = false;
+            spawnEffect(koji.x + koji.w/2, koji.y + koji.h, '#fff', 5);
+        }
 
-        // Collect Banana
+        // Smooth Camera Follow
+        let targetCamY = koji.y - (baseH / 2);
+        smoothCamY += (targetCamY - smoothCamY) * 0.1; 
+        cameraY = Math.max(0, Math.min(worldHeight - baseH, smoothCamY));
+
+        // Item Collection
         bananas.forEach(b => {
-            if(b.active && koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.y + b.h && koji.y + koji.h > b.y) {
-                b.active = false; score++; document.getElementById('scoreText').innerText = score;
-                createExplosion(b.x+20, b.y+20, 'gold');
-                setTimeout(() => b.active = true, 5000); // Respawn 5 detik
+            if (b.active) {
+                let hover = Math.sin(gameFrame * 0.1) * 8;
+                if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.y + b.h + hover && koji.y + koji.h > b.y + hover) {
+                    b.active = false;
+                    score++;
+                    document.getElementById('scoreVal').innerText = score;
+                    spawnEffect(b.x + 20, b.y + 20, 'gold', 15);
+                    setTimeout(() => b.active = true, 8000); // Respawn
+                }
             }
         });
 
-        // Collect Potion
-        if(potion.active && koji.x < potion.x + potion.w && koji.x + koji.w > potion.x && koji.y < potion.y + potion.h && koji.y + koji.h > potion.y) {
-            if(lives < 3) { lives++; updateLives(); potion.active = false; createExplosion(potion.x+20, potion.y+20, 'lime'); }
-            setTimeout(() => potion.active = true, 15000);
+        // Potion Logic
+        if (potion.active && koji.x < potion.x + potion.w && koji.x + koji.w > potion.x && koji.y < potion.y + potion.h && koji.y + koji.h > potion.y) {
+            if (lives < 3) {
+                lives++;
+                updateHearts();
+                potion.active = false;
+                spawnEffect(potion.x + 25, potion.y + 25, '#00ff00', 20);
+            }
         }
 
         // Enemy Collision
         enemies.forEach(e => {
-            if(e.startX === 0) e.startX = e.x;
-            e.x += e.speed;
-            if(e.x > e.startX + e.range || e.x < e.startX || e.x > 750 || e.x < 0) e.speed *= -1;
-            if(invul === 0 && koji.x < e.x + e.w && koji.x + koji.w > e.x && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
-                lives--; invul = 60; updateLives();
-                createExplosion(koji.x+35, koji.y+35, 'red');
-                if(lives <= 0) location.reload();
+            e.x += e.speed * e.dir;
+            if (e.x > e.startX + e.range || e.x < e.startX) e.dir *= -1;
+
+            if (isInvulnerable === 0 && koji.x < e.x + e.w - 10 && koji.x + koji.w > e.x + 10 && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
+                lives--;
+                isInvulnerable = 100;
+                updateHearts();
+                spawnEffect(koji.x + 35, koji.y + 35, 'red', 15);
+                if (lives <= 0) { alert("Game Over! Score: " + score); location.reload(); }
             }
         });
 
-        particles.forEach((p, i) => { p.x += p.dx; p.y += p.dy; p.life--; if(p.life <= 0) particles.splice(i, 1); });
+        // Update Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+            if (p.life <= 0) particles.splice(i, 1);
+        });
     }
 
-    function updateLives() {
-        let h = ""; for(let i=0; i<lives; i++) h += "❤️ ";
-        document.getElementById('livesText').innerText = h;
+    function updateHearts() {
+        let h = ""; for(let i=0; i<lives; i++) h += "❤️";
+        document.getElementById('livesVal').innerText = h;
     }
 
+    // 10. Core Draw Loop
     function draw() {
-        // BERSIHKAN LAYAR TOTAL (MENGHAPUS BAYANGAN)
-        ctx.fillStyle = "#4dbfff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Clear Screen with Sky Gradient
+        ctx.fillStyle = '#4dbfff';
+        ctx.fillRect(0, 0, baseW, baseH);
 
         ctx.save();
         ctx.translate(0, -cameraY);
 
-        // Background Berulang
-        if(img.bg.complete) {
-            for(let i=0; i<worldHeight; i+=canvas.height) ctx.drawImage(img.bg, 0, i, canvas.width, canvas.height);
+        // A. Parallax Background
+        if (assets.bg.complete) {
+            // Draw multiple background layers to cover full height
+            for (let bgY = 0; bgY < worldHeight; bgY += baseH) {
+                ctx.drawImage(assets.bg, 0, bgY, baseW, baseH);
+            }
         }
 
-        // Platforms
+        // B. Draw Platforms
         platforms.forEach(p => {
-            ctx.fillStyle = "#333";
-            ctx.fillRect(p.x, p.y, p.w, p.h);
-            if(img.stone.complete) {
-                for(let x=p.x; x<p.x+p.w; x+=40) ctx.drawImage(img.stone, x, p.y, 40, p.h);
+            if (assets.stone.complete) {
+                // Tiling stone texture
+                for (let x = 0; x < p.w; x += 40) {
+                    ctx.drawImage(assets.stone, p.x + x, p.y, 40, p.h);
+                }
+            } else {
+                ctx.fillStyle = '#555';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
             }
         });
 
-        // Items
-        bananas.forEach(b => { if(b.active && img.banana.complete) ctx.drawImage(img.banana, b.x, b.y + Math.sin(tick*0.1)*5, b.w, b.h); });
-        if(potion.active && img.ramuan.complete) ctx.drawImage(img.ramuan, potion.x, potion.y, potion.w, potion.h);
+        // C. Draw Items
+        bananas.forEach((b, i) => {
+            if (b.active && assets.banana.complete) {
+                let hover = Math.sin(gameFrame * 0.1 + i) * 8;
+                ctx.drawImage(assets.banana, b.x, b.y + hover, b.w, b.h);
+            }
+        });
+        
+        if (potion.active && assets.ramuan.complete) {
+            ctx.drawImage(assets.ramuan, potion.x, potion.y, potion.w, potion.h);
+        }
 
-        // Enemies
-        enemies.forEach(e => { if(img.enemy.complete) ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h); });
+        // D. Draw Enemies
+        enemies.forEach(e => {
+            if (assets.enemy.complete) {
+                ctx.drawImage(assets.enemy, e.x, e.y, e.w, e.h);
+            }
+        });
 
-        // Koji
-        if(invul % 10 < 5 && img.koji.complete) ctx.drawImage(img.koji, koji.x, koji.y, koji.w, koji.h);
+        // E. Draw Koji with Blink Effect (Invulnerable)
+        if (isInvulnerable % 10 < 5) {
+            if (assets.koji.complete) {
+                ctx.save();
+                // Flip image based on direction
+                if (koji.direction === 'left') {
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(assets.koji, -koji.x - koji.w, koji.y, koji.w, koji.h);
+                } else {
+                    ctx.drawImage(assets.koji, koji.x, koji.y, koji.w, koji.h);
+                }
+                ctx.restore();
+            } else {
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(koji.x, koji.y, koji.w, koji.h);
+            }
+        }
 
-        // Particles
-        particles.forEach(p => { ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 4, 4); });
+        // F. Draw Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1.0;
 
         ctx.restore();
     }
 
-    function loop() { update(); draw(); requestAnimationFrame(loop); }
-    img.bg.onload = loop;
-    // Fallback jika gambar lama dimuat
-    setTimeout(loop, 1000);
+    // Start Engine
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Wait for critical assets
+    assets.bg.onload = () => {
+        gameLoop();
+    };
+    
+    // Fallback if images fail to load
+    setTimeout(() => { if(gameFrame === 0) gameLoop(); }, 2000);
+
 </script>
 </body>
 </html>
