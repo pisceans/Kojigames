@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koji Jungle Adventure - Final Update</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background-color: #1a1a1a; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            font-family: 'Courier New', Courier, monospace; 
+        }
+        canvas { 
+            border: 5px solid #fff; 
+            box-shadow: 0 0 25px rgba(0,0,0,0.7); 
+            background-color: #4dbfff; 
+        }
+        #ui-layer { 
+            position: absolute; 
+            top: 30px; 
+            left: 30px; 
+            color: #fff; 
+            font-size: 28px; 
+            font-weight: bold;
+            text-shadow: 3px 3px #000; 
+            pointer-events: none; 
+        }
+        #menu { 
+            display: none; 
+            position: absolute; 
+            text-align: center; 
+            background: rgba(0,0,0,0.9); 
+            padding: 50px; 
+            border-radius: 20px; 
+            color: white; 
+            border: 3px solid #FFD700; 
+            z-index: 10;
+        }
+        button { 
+            padding: 15px 35px; 
+            font-size: 20px; 
+            cursor: pointer; 
+            background: #e67e22; 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            margin-top: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+        button:hover { background: #d35400; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">🍌 BANANAS: <span id="score">0</span></div>
+
+<div id="menu">
+    <h1 style="color: #ff4444;">GAME OVER</h1>
+    <p style="font-size: 1.2em;">Skor Koji: <span id="final-score">0</span></p>
+    <button onclick="restartGame()">COBA LAGI</button>
+</div>
+
+<canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const menu = document.getElementById('menu');
+    const finalScoreEl = document.getElementById('final-score');
+
+    // Pengaturan Aset Gambar
+    const img = {
+        koji: new Image(),
+        banana: new Image(),
+        enemy: new Image(),
+        box: new Image(),
+        stone: new Image(),
+        bg: new Image()
+    };
+
+    // Pastikan nama file sesuai dengan yang Anda upload ke GitHub
+    img.koji.src = 'Koji.png';
+    img.banana.src = 'banana.png';
+    img.enemy.src = 'enemy.png';
+    img.box.src = 'box.png';
+    img.stone.src = 'stone.png';
+    img.bg.src = 'background.png';
+
+    // State Game
+    let isGameOver = false;
+    let score = 0;
+    let gameTick = 0;
+    let keys = {};
+
+    // Karakter Utama (Koji)
+    let koji = { 
+        x: 50, 
+        y: 280, 
+        w: 75, 
+        h: 75, 
+        dy: 0, 
+        jump: -16, 
+        speed: 5.5, 
+        g: 0.85, 
+        grounded: false 
+    };
+    
+    // Item (Pisang) - Posisi Statis namun Tampilan Melayang
+    let bananas = [
+        { x: 280, y: 200, w: 40, h: 40, collected: false },
+        { x: 450, y: 140, w: 40, h: 40, collected: false },
+        { x: 700, y: 220, w: 40, h: 40, collected: false }
+    ];
+
+    // Musuh (Monster Merah) - Bergerak Patroli
+    let enemies = [
+        { x: 350, y: 300, w: 55, h: 55, speed: 2.5, range: 180, startX: 350 },
+        { x: 620, y: 300, w: 50, h: 50, speed: 1.8, range: 130, startX: 620 }
+    ];
+
+    // Rintangan (Batu & Box)
+    let obstacles = [
+        { x: 200, y: 310, w: 55, h: 55, img: img.box },
+        { x: 530, y: 310, w: 60, h: 60, img: img.stone }
+    ];
+
+    // Kontrol Input
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function checkCollision(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function update() {
+        if (isGameOver) return;
+        gameTick++;
+
+        // Gerakan Koji
+        if (keys['ArrowLeft'] && koji.x > 0) koji.x -= koji.speed;
+        if (keys['ArrowRight'] && koji.x < canvas.width - koji.w) koji.x += koji.speed;
+        if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && koji.grounded) {
+            koji.dy = koji.jump;
+            koji.grounded = false;
+        }
+
+        koji.dy += koji.g;
+        koji.y += koji.dy;
+
+        // Tabrakan Tanah (Batas bawah)
+        if (koji.y > 280) {
+            koji.y = 280;
+            koji.dy = 0;
+            koji.grounded = true;
+        }
+
+        // Animasi Pisang & Koleksi
+        bananas.forEach((b, i) => {
+            if (!b.collected) {
+                // Efek melayang naik turun menggunakan sinosoidal
+                b.renderY = b.y + Math.sin((gameTick + i * 15) * 0.1) * 8;
+                
+                // Deteksi Tabrakan Pisang
+                if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.renderY + b.h && koji.y + koji.h > b.renderY) {
+                    b.collected = true;
+                    score++;
+                    scoreEl.innerText = score;
+                }
+            }
+        });
+
+        // Patroli Musuh
+        enemies.forEach(e => {
+            e.x += e.speed;
+            if (e.x > e.startX + e.range || e.x < e.startX) e.speed *= -1;
+            if (checkCollision(koji, e)) endGame();
+        });
+
+        // Tabrakan Rintangan (Sederhana: Menghambat jalan)
+        obstacles.forEach(o => {
+            if (checkCollision(koji, o)) {
+                if (koji.dy > 0 && koji.y + koji.h < o.y + 25) {
+                    koji.y = o.y - koji.h;
+                    koji.dy = 0;
+                    koji.grounded = true;
+                } else {
+                    if (keys['ArrowRight']) koji.x -= koji.speed;
+                    if (keys['ArrowLeft']) koji.x += koji.speed;
+                }
+            }
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. Gambar Background
+        if (img.bg.complete) ctx.drawImage(img.bg, 0, 0, canvas.width, canvas.height);
+
+        // 2. Gambar Rintangan (Box & Stone)
+        obstacles.forEach(o => {
+            if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.w, o.h);
+        });
+
+        // 3. Gambar Pisang (Dengan animasi melayang)
+        bananas.forEach(b => {
+            if (!b.collected && img.banana.complete) {
+                ctx.drawImage(img.banana, b.x, b.renderY || b.y, b.w, b.h);
+            }
+        });
+
+        // 4. Gambar Musuh (Bisa Berbalik Arah)
+        enemies.forEach(e => {
+            if (img.enemy.complete) {
+                ctx.save();
+                if (e.speed < 0) { // Menghadap Kiri
+                    ctx.translate(e.x + e.w, e.y);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(img.enemy, 0, 0, e.w, e.h);
+                } else { // Menghadap Kanan
+                    ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h);
+                }
+                ctx.restore();
+            }
+        });
+
+        // 5. Gambar Main Character (Koji)
+        if (img.koji.complete) {
+            ctx.drawImage(img.koji, koji.x, koji.y, koji.w, koji.h);
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        isGameOver = true;
+        finalScoreEl.innerText = score;
+        menu.style.display = 'block';
+    }
+
+    function restartGame() {
+        // Reload halaman untuk mereset semua posisi aset dengan cepat
+        location.reload();
+    }
+
+    // Jalankan Game hanya jika aset utama sudah ter-load
+    let assetsLoaded = 0;
+    const totalAssets = Object.keys(img).length;
+    Object.values(img).forEach(asset => {
+        asset.onload = () => {
+            assetsLoaded++;
+            if (assetsLoaded === totalAssets) gameLoop();
+        };
+        // Penanganan jika gambar gagal dimuat
+        asset.onerror = () => {
+            console.error("Gagal memuat: " + asset.src);
+            assetsLoaded++; // Tetap lanjut agar game tidak freeze
+            if (assetsLoaded === totalAssets) gameLoop();
+        };
+    });
+</script>
+</body>
+</html>
