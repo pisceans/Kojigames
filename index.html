@@ -3,27 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Adventure - $ANIMAL Edition</title>
+    <title>Koji Pro Adventure - $ANIMAL Edition</title>
     <style>
+        /* Reset & Base Styling */
         * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; }
         body { margin: 0; padding: 0; background: #000; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; overflow: hidden; }
         
-        /* Layar Game */
-        #game-container { position: relative; width: 100%; height: 65vh; background: #4dbfff; overflow: hidden; }
+        /* Area Layar Game */
+        #game-container { position: relative; width: 100%; height: 65vh; background: #4dbfff; overflow: hidden; border-bottom: 3px solid #333; }
         canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
-        /* UI Hud */
-        #hud { position: absolute; top: 10px; left: 10px; z-index: 20; }
+        /* UI Hud (Skor & Nyawa) */
+        #hud { position: absolute; top: 10px; left: 10px; z-index: 20; pointer-events: none; }
         .hud-box { background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 12px; border: 2px solid #ffcc00; color: white; }
         .score { color: #ffcc00; font-weight: bold; font-size: 18px; margin-bottom: 5px; }
+        .lives { font-size: 20px; }
 
-        /* Area Kontrol Bawah */
+        /* Area Kontrol di Bawah */
         #controls-area { width: 100%; height: 35vh; background: #111; display: flex; justify-content: flex-end; align-items: center; padding-right: 30px; }
 
         /* D-Pad Segitiga di Pojok Kanan Bawah */
-        .d-pad { display: grid; grid-template-columns: repeat(3, 65px); grid-template-rows: repeat(2, 65px); gap: 10px; }
-        .btn { width: 65px; height: 65px; background: #333; border: 2px solid #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; color: white; font-size: 28px; }
-        .btn:active { background: #555; transform: scale(0.9); }
+        .d-pad { display: grid; grid-template-columns: repeat(3, 65px); grid-template-rows: repeat(2, 65px); gap: 12px; }
+        .btn { width: 65px; height: 65px; background: #333; border: 2px solid #eee; border-radius: 12px; display: flex; justify-content: center; align-items: center; color: white; font-size: 28px; box-shadow: 0 4px #000; }
+        .btn:active { background: #555; transform: translateY(2px); box-shadow: 0 2px #000; }
+        
+        /* Layout Tombol */
         .up { grid-column: 2; grid-row: 1; border-color: #ffcc00; color: #ffcc00; }
         .left { grid-column: 1; grid-row: 2; }
         .right { grid-column: 3; grid-row: 2; }
@@ -35,7 +39,7 @@
     <div id="hud">
         <div class="hud-box">
             <div class="score">💰 $ANIMAL: <span id="scoreVal">0</span></div>
-            <div id="livesVal">❤️❤️❤️</div>
+            <div id="livesVal" class="lives">❤️❤️❤️</div>
         </div>
     </div>
     <canvas id="gameCanvas"></canvas>
@@ -50,9 +54,13 @@
 </div>
 
 <script>
+    /**
+     * CONFIGURASI ENGINE & ASSETS
+     */
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = 800; canvas.height = 600;
+    canvas.width = 800; 
+    canvas.height = 600;
 
     const assets = {
         koji: new Image(), banana: new Image(), enemy: new Image(),
@@ -67,90 +75,214 @@
 
     const worldHeight = 4000;
     let cameraY = worldHeight - 600;
-    let score = 0; let lives = 3; let invul = 0;
-    let platforms = []; let bananas = []; let enemies = []; let potions = [];
+    let score = 0; 
+    let lives = 3; 
+    let invul = 0; 
+    let tick = 0;
 
-    const koji = { x: 400, y: worldHeight - 150, w: 70, h: 70, vx: 0, vy: 0, speed: 8, g: 0.8, jump: -17, jumps: 0, dir: 1 };
+    const koji = { 
+        x: 400, y: worldHeight - 150, 
+        w: 75, h: 75, 
+        vx: 0, vy: 0, 
+        speed: 8.5, g: 0.8, jump: -17.5, 
+        jumps: 0, dir: 1 
+    };
 
+    let platforms = []; 
+    let bananas = []; 
+    let enemies = []; 
+    let potions = [];
+
+    /**
+     * GENERASI LEVEL
+     */
     function initLevel() {
+        // Lantai Dasar
         platforms = [{ x: 0, y: worldHeight - 40, w: 800, h: 40, move: false }];
+        
         for (let i = 1; i < 30; i++) {
-            let py = (worldHeight - 40) - (i * 155);
-            let pw = 150 + Math.random() * 100;
+            let py = (worldHeight - 40) - (i * 155); // Jarak ideal sekali lompat
+            let pw = 160 + Math.random() * 80;
             let px = Math.random() * (800 - pw);
-            platforms.push({ x: px, y: py, w: pw, h: 30, move: i % 4 === 0, dir: 1, speed: 2, startX: px, range: 120 });
             
+            let plat = { 
+                x: px, y: py, w: pw, h: 30, 
+                move: i % 3 === 0, // Lantai ke-3 bergerak
+                dir: 1, speed: 2.2, startX: px, range: 140 
+            };
+            platforms.push(plat);
+
+            // Spawn Items & Enemies
             if (i % 2 === 0) bananas.push({ x: px + 30, y: py - 50, w: 40, h: 40, active: true });
-            if (i % 3 === 0) enemies.push({ x: px, y: py - 55, w: 55, h: 55, startX: px, range: pw - 55, dir: 1, speed: 2.5 });
-            if (i % 7 === 0) potions.push({ x: px + 20, y: py - 60, w: 45, h: 45, active: true });
+            if (i > 4 && i % 4 === 0) enemies.push({ x: px, y: py - 55, w: 55, h: 55, startX: px, range: pw - 55, dir: 1, speed: 2.5 });
+            if (i % 8 === 0) potions.push({ x: px + pw/2 - 20, y: py - 65, w: 45, h: 45, active: true });
         }
     }
     initLevel();
 
+    /**
+     * INPUT HANDLER
+     */
     const keys = {};
-    function handleJump() { if (koji.jumps < 2) { koji.vy = koji.jump; koji.jumps++; } }
+    function handleJump() { 
+        if (koji.jumps < 2) { 
+            koji.vy = koji.jump; 
+            koji.jumps++; 
+        } 
+    }
 
     function bind(id, code) {
         const b = document.getElementById(id);
-        b.ontouchstart = (e) => { e.preventDefault(); if(code === 'ArrowUp') handleJump(); keys[code] = true; };
-        b.ontouchend = () => keys[code] = false;
+        const start = (e) => { e.preventDefault(); if(code === 'ArrowUp') handleJump(); keys[code] = true; };
+        const end = () => keys[code] = false;
+        b.ontouchstart = start; b.ontouchend = end;
+        b.onmousedown = start; b.onmouseup = end;
     }
     bind('btnLeft', 'ArrowLeft'); bind('btnRight', 'ArrowRight'); bind('btnUp', 'ArrowUp');
 
+    window.addEventListener('keydown', e => { if(e.code === 'ArrowUp') handleJump(); keys[e.code] = true; });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    /**
+     * GAME LOGIC
+     */
     function update() {
+        tick++;
         if (invul > 0) invul--;
+
+        // Gerakan Horizontal
         if (keys['ArrowLeft']) { koji.vx = -koji.speed; koji.dir = -1; }
         else if (keys['ArrowRight']) { koji.vx = koji.speed; koji.dir = 1; }
         else { koji.vx *= 0.8; }
         
-        koji.x += koji.vx; koji.vy += koji.g; koji.y += koji.vy;
-        if (koji.x < 0) koji.x = 0; if (koji.x > 730) koji.x = 730;
+        koji.x += koji.vx; 
+        koji.vy += koji.g; 
+        koji.y += koji.vy;
 
+        // Batas Layar Kanan Kiri
+        if (koji.x < 0) koji.x = 0; 
+        if (koji.x > 725) koji.x = 725;
+
+        // Logika Platform & Lantai Bergerak
         platforms.forEach(p => {
-            if (p.move) { p.x += p.speed * p.dir; if (p.x > p.startX + p.range || p.x < p.startX) p.dir *= -1; }
-            if (koji.vy > 0 && koji.y + koji.h >= p.y && koji.y + koji.h <= p.y + 20 && koji.x + 40 > p.x && koji.x < p.x + p.w) {
-                koji.y = p.y - koji.h; koji.vy = 0; koji.jumps = 0;
+            if (p.move) { 
+                p.x += p.speed * p.dir; 
+                if (p.x > p.startX + p.range || p.x < p.startX - 40) p.dir *= -1; 
+            }
+            // Deteksi Injak Batu
+            if (koji.vy > 0 && 
+                koji.y + koji.h >= p.y && 
+                koji.y + koji.h <= p.y + 25 && 
+                koji.x + 45 > p.x && 
+                koji.x < p.x + p.w - 5) {
+                
+                koji.y = p.y - koji.h; 
+                koji.vy = 0; 
+                koji.jumps = 0;
+
+                // KOJI MENEMPEL PADA BATU BERGERAK
+                if (p.move) {
+                    koji.x += p.speed * p.dir;
+                }
             }
         });
 
+        // Kamera Mengunci Koji
         cameraY = koji.y - 300;
         if (cameraY < 0) cameraY = 0;
         if (cameraY > worldHeight - 600) cameraY = worldHeight - 600;
 
+        // Ambil $ANIMAL
         bananas.forEach(b => {
-            if (b.active && Math.abs(koji.x - b.x) < 40 && Math.abs(koji.y - b.y) < 40) { b.active = false; score++; document.getElementById('scoreVal').innerText = score; }
+            if (b.active && Math.abs(koji.x - b.x) < 45 && Math.abs(koji.y - b.y) < 45) { 
+                b.active = false; score++; 
+                document.getElementById('scoreVal').innerText = score; 
+            }
         });
 
+        // Ambil Ramuan Nyawa
         potions.forEach(p => {
-            if (p.active && Math.abs(koji.x - p.x) < 40 && Math.abs(koji.y - p.y) < 40) { p.active = false; if(lives < 3) lives++; document.getElementById('livesVal').innerText = "❤️".repeat(lives); }
+            if (p.active && Math.abs(koji.x - p.x) < 45 && Math.abs(koji.y - p.y) < 45) { 
+                p.active = false; 
+                if(lives < 3) lives++; 
+                document.getElementById('livesVal').innerText = "❤️".repeat(lives); 
+            }
         });
 
+        // Tabrakan Musuh
         enemies.forEach(e => {
-            e.x += e.speed * e.dir; if (e.x > e.startX + e.range || e.x < e.startX) e.dir *= -1;
-            if (invul === 0 && Math.abs(koji.x - e.x) < 45 && Math.abs(koji.y - e.y) < 45) { lives--; invul = 60; document.getElementById('livesVal').innerText = "❤️".repeat(lives); if (lives <= 0) location.reload(); }
+            e.x += e.speed * e.dir; 
+            if (e.x > e.startX + e.range || e.x < e.startX) e.dir *= -1;
+            
+            if (invul === 0 && Math.abs(koji.x - e.x) < 45 && Math.abs(koji.y - e.y) < 45) { 
+                lives--; 
+                invul = 60; 
+                document.getElementById('livesVal').innerText = "❤️".repeat(lives); 
+                if (lives <= 0) {
+                    alert("Game Over! Score $ANIMAL: " + score);
+                    location.reload();
+                }
+            }
         });
     }
 
+    /**
+     * RENDERING
+     */
     function draw() {
-        ctx.fillStyle = '#4dbfff'; ctx.fillRect(0, 0, 800, 600);
-        ctx.save(); ctx.translate(0, -cameraY);
-        if (assets.bg.complete) { for (let i = 0; i < worldHeight; i += 600) ctx.drawImage(assets.bg, 0, i, 800, 600); }
+        ctx.fillStyle = '#4dbfff'; 
+        ctx.fillRect(0, 0, 800, 600);
+        
+        ctx.save(); 
+        ctx.translate(0, -cameraY);
+
+        // Background Berulang
+        if (assets.bg.complete) { 
+            for (let i = 0; i < worldHeight; i += 600) ctx.drawImage(assets.bg, 0, i, 800, 600); 
+        }
+
+        // Gambar Platform
         platforms.forEach(p => {
-            if (assets.stone.complete) { for(let x=0; x<p.w; x+=40) ctx.drawImage(assets.stone, p.x + x, p.y, 40, p.h); }
+            if (assets.stone.complete) { 
+                for(let x=0; x<p.w; x+=40) ctx.drawImage(assets.stone, p.x + x, p.y, 40, p.h); 
+            } else {
+                ctx.fillStyle = '#555'; ctx.fillRect(p.x, p.y, p.w, p.h);
+            }
         });
-        bananas.forEach(b => { if(b.active && assets.banana.complete) ctx.drawImage(assets.banana, b.x, b.y, b.w, b.h); });
-        potions.forEach(p => { if(p.active && assets.ramuan.complete) ctx.drawImage(assets.ramuan, p.x, p.y, p.w, p.h); });
-        enemies.forEach(e => { if(assets.enemy.complete) ctx.drawImage(assets.enemy, e.x, e.y, e.w, e.h); });
+
+        // Gambar Items & Musuh
+        bananas.forEach(b => { 
+            if(b.active && assets.banana.complete) 
+                ctx.drawImage(assets.banana, b.x, b.y + Math.sin(tick*0.1)*5, b.w, b.h); 
+        });
+        potions.forEach(p => { 
+            if(p.active && assets.ramuan.complete) 
+                ctx.drawImage(assets.ramuan, p.x, p.y, p.w, p.h); 
+        });
+        enemies.forEach(e => { 
+            if(assets.enemy.complete) 
+                ctx.drawImage(assets.enemy, e.x, e.y, e.w, e.h); 
+        });
+
+        // Gambar Koji (Efek Kedip jika Invulnerable)
         if (invul % 10 < 5 && assets.koji.complete) {
             ctx.save();
-            if (koji.dir === -1) { ctx.translate(koji.x + koji.w, koji.y); ctx.scale(-1, 1); ctx.drawImage(assets.koji, 0, 0, koji.w, koji.h); }
-            else ctx.drawImage(assets.koji, koji.x, koji.y, koji.w, koji.h);
+            if (koji.dir === -1) { 
+                ctx.translate(koji.x + koji.w, koji.y); 
+                ctx.scale(-1, 1); 
+                ctx.drawImage(assets.koji, 0, 0, koji.w, koji.h); 
+            } else {
+                ctx.drawImage(assets.koji, koji.x, koji.y, koji.w, koji.h);
+            }
             ctx.restore();
         }
+
         ctx.restore();
     }
 
     function loop() { update(); draw(); requestAnimationFrame(loop); }
+    
+    // Mulai Game
     loop();
 </script>
 </body>
