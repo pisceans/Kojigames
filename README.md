@@ -11,7 +11,7 @@ Proyek ini merupakan demonstrasi dari implementasi logika game sederhana, sistem
 
 ## 🕹️ Demo & Gameplay
 Anda dapat memainkan game ini langsung melalui GitHub Pages:
-**[KLIK DI SINI UNTUK BERMAIN](https://pisceans.github.io/-ANIMAL/)** (Sesuaikan dengan URL asli Anda)
+**[KLIK DI SINI UNTUK BERMAIN](https://pisceans.github.io/Kojigames/)** (Sesuaikan dengan URL asli Anda)
 
 ### Kontrol:
 - **Panah Kiri / Kanan**: Berjalan
