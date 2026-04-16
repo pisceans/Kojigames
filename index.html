@@ -3,24 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Jungle Adventure</title>
+    <title>Koji Adventure - Hearts & Levels</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #1a1a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', Courier, monospace; }
         canvas { border: 3px solid #fff; max-width: 95%; height: auto; background-color: #4dbfff; }
-        #ui-layer { position: absolute; top: 10px; left: 10px; color: #fff; font-size: 22px; text-shadow: 2px 2px #000; z-index: 5; }
+        #ui-layer { position: absolute; top: 15px; left: 15px; color: #fff; font-size: 20px; text-shadow: 2px 2px #000; z-index: 5; pointer-events: none; }
+        .heart { color: #ff4444; font-size: 24px; }
         
         /* Navigasi Layar Sentuh */
-        .controls { position: fixed; bottom: 30px; right: 30px; display: grid; grid-template-columns: repeat(3, 70px); grid-template-rows: repeat(2, 70px); gap: 10px; z-index: 10; }
-        .btn { background: rgba(255, 255, 255, 0.2); border: 2px solid #fff; border-radius: 15px; display: flex; justify-content: center; align-items: center; color: white; font-size: 30px; user-select: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
-        .btn:active { background: rgba(255, 255, 255, 0.5); transform: scale(0.95); }
+        .controls { position: fixed; bottom: 30px; right: 30px; display: grid; grid-template-columns: repeat(3, 65px); grid-template-rows: repeat(2, 65px); gap: 10px; z-index: 10; }
+        .btn { background: rgba(255, 255, 255, 0.2); border: 2px solid #fff; border-radius: 12px; display: flex; justify-content: center; align-items: center; color: white; font-size: 28px; user-select: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+        .btn:active { background: rgba(255, 255, 255, 0.5); }
         .up { grid-column: 2; }
         .left { grid-column: 1; grid-row: 2; }
         .right { grid-column: 3; grid-row: 2; }
+
+        #game-over { display: none; position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 30px; text-align: center; border-radius: 15px; border: 2px solid red; }
     </style>
 </head>
 <body>
 
-<div id="ui-layer">🍌 BANANAS: <span id="score">0</span></div>
+<div id="ui-layer">
+    <div>🍌 BANANAS: <span id="score">0</span></div>
+    <div id="lives-display">❤️ ❤️ ❤️</div>
+</div>
+
+<div id="game-over">
+    <h1>GAME OVER</h1>
+    <p>Skor Akhir: <span id="final-score">0</span></p>
+    <button onclick="location.reload()" style="padding: 10px 20px; cursor: pointer;">MAINKAN LAGI</button>
+</div>
 
 <canvas id="gameCanvas" width="800" height="400"></canvas>
 
@@ -33,87 +45,137 @@
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-
+    
+    // Aset sesuai nama file di repositori kamu
     const img = {
-        koji: new Image(),
-        banana: new Image(),
-        enemy: new Image(),
-        box: new Image(),
-        stone: new Image(),
-        bg: new Image()
+        koji: new Image(), banana: new Image(), enemy: new Image(),
+        box: new Image(), stone: new Image(), bg: new Image()
     };
-
-    // SINKRONISASI NAMA FILE SESUAI REPOSITORI (SEMUA .png)
-    img.bg.src = 'background.png';
     img.koji.src = 'koji.png';
     img.banana.src = 'banana.png';
     img.enemy.src = 'enemy.png';
     img.box.src = 'box.png';
     img.stone.src = 'stone.png';
+    img.bg.src = 'background.png';
 
     let score = 0;
+    let lives = 3;
     let gameTick = 0;
+    let isGameOver = false;
+    let invulnerable = 0; // Waktu kebal setelah kena musuh
     let keys = {};
 
-    let koji = { x: 50, y: 280, w: 80, h: 80, dy: 0, jump: -16, speed: 6, g: 0.9, grounded: false };
-    let bananas = [
-        { x: 320, y: 210, w: 45, h: 45, collected: false },
-        { x: 580, y: 160, w: 45, h: 45, collected: false }
-    ];
-    let enemies = [{ x: 450, y: 305, w: 55, h: 55, speed: 2.2, range: 160, startX: 450 }];
-    let obstacles = [
-        { x: 220, y: 310, w: 60, h: 60, img: img.box },
-        { x: 520, y: 310, w: 65, h: 65, img: img.stone }
+    let koji = { x: 50, y: 300, w: 70, h: 70, dy: 0, jump: -15, speed: 5, g: 0.8, grounded: false };
+
+    // Lantai bertingkat
+    let platforms = [
+        { x: 0, y: 380, w: 800, h: 20 },
+        { x: 150, y: 280, w: 200, h: 15 },
+        { x: 450, y: 220, w: 200, h: 15 },
+        { x: 100, y: 140, w: 250, h: 15 },
+        { x: 500, y: 80, w: 150, h: 15 }
     ];
 
+    let bananas = [
+        { x: 220, y: 230, w: 40, h: 40, collected: false },
+        { x: 520, y: 170, w: 40, h: 40, collected: false },
+        { x: 150, y: 90, w: 40, h: 40, collected: false }
+    ];
+
+    let enemies = [
+        { x: 450, y: 175, w: 45, h: 45, speed: 2, range: 150, startX: 450 },
+        { x: 200, y: 335, w: 45, h: 45, speed: 1.5, range: 400, startX: 200 }
+    ];
+
+    // Input Control
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
 
     function setupBtn(id, code) {
         const btn = document.getElementById(id);
-        const action = (e) => { e.preventDefault(); keys[code] = true; };
-        const stop = (e) => { e.preventDefault(); keys[code] = false; };
-        btn.addEventListener('touchstart', action);
-        btn.addEventListener('touchend', stop);
-        btn.addEventListener('mousedown', action);
-        btn.addEventListener('mouseup', stop);
+        const start = (e) => { e.preventDefault(); keys[code] = true; };
+        const end = (e) => { e.preventDefault(); keys[code] = false; };
+        btn.addEventListener('touchstart', start); btn.addEventListener('touchend', end);
+        btn.addEventListener('mousedown', start); btn.addEventListener('mouseup', end);
     }
-
-    setupBtn('btnUp', 'ArrowUp');
-    setupBtn('btnLeft', 'ArrowLeft');
-    setupBtn('btnRight', 'ArrowRight');
+    setupBtn('btnUp', 'ArrowUp'); setupBtn('btnLeft', 'ArrowLeft'); setupBtn('btnRight', 'ArrowRight');
 
     function update() {
+        if (isGameOver) return;
         gameTick++;
+        if (invulnerable > 0) invulnerable--;
+
+        // Gerakan Koji
         if (keys['ArrowLeft'] && koji.x > 0) koji.x -= koji.speed;
         if (keys['ArrowRight'] && koji.x < canvas.width - koji.w) koji.x += koji.speed;
         if (keys['ArrowUp'] && koji.grounded) { koji.dy = koji.jump; koji.grounded = false; }
 
         koji.dy += koji.g;
         koji.y += koji.dy;
-        if (koji.y > 280) { koji.y = 280; koji.dy = 0; koji.grounded = true; }
 
+        // Cek Platform (Memanjat)
+        koji.grounded = false;
+        platforms.forEach(p => {
+            if (koji.dy >= 0 && koji.y + koji.h <= p.y + p.h && koji.y + koji.h >= p.y - 5 &&
+                koji.x + koji.w > p.x && koji.x < p.x + p.w) {
+                koji.y = p.y - koji.h;
+                koji.dy = 0;
+                koji.grounded = true;
+            }
+        });
+
+        // Pisang Bergerak & Koleksi
         bananas.forEach((b, i) => {
             if (!b.collected) {
-                b.renderY = b.y + Math.sin((gameTick + i * 20) * 0.1) * 8;
+                b.renderY = b.y + Math.sin((gameTick + i * 20) * 0.15) * 8;
                 if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.renderY + b.h && koji.y + koji.h > b.renderY) {
-                    b.collected = true; score++; scoreEl.innerText = score;
+                    b.collected = true; score++; document.getElementById('score').innerText = score;
                 }
             }
         });
 
+        // Musuh Bergerak & Tabrakan (Kurangi Nyawa)
         enemies.forEach(e => {
             e.x += e.speed;
             if (e.x > e.startX + e.range || e.x < e.startX) e.speed *= -1;
+            
+            if (invulnerable === 0 && koji.x < e.x + e.w && koji.x + koji.w > e.x && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
+                lives--;
+                updateLivesDisplay();
+                invulnerable = 60; // Kebal selama 1 detik
+                if (lives <= 0) { isGameOver = true; showGameOver(); }
+            }
         });
+    }
+
+    function updateLivesDisplay() {
+        let h = "";
+        for(let i=0; i<lives; i++) h += "❤️ ";
+        document.getElementById('lives-display').innerHTML = h;
+    }
+
+    function showGameOver() {
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('game-over').style.display = 'block';
     }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (img.bg.complete) ctx.drawImage(img.bg, 0, 0, canvas.width, canvas.height);
-        obstacles.forEach(o => { if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.w, o.h); });
-        bananas.forEach(b => { if (!b.collected && img.banana.complete) ctx.drawImage(img.banana, b.x, b.renderY || b.y, b.w, b.h); });
+        
+        // Gambar Platform (Lantai)
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        platforms.forEach(p => {
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            if (img.stone.complete) {
+                for(let x=p.x; x<p.x+p.w; x+=20) ctx.drawImage(img.stone, x, p.y, 20, p.h);
+            }
+        });
+
+        bananas.forEach(b => { 
+            if (!b.collected && img.banana.complete) ctx.drawImage(img.banana, b.x, b.renderY || b.y, b.w, b.h); 
+        });
+
         enemies.forEach(e => {
             if (img.enemy.complete) {
                 ctx.save();
@@ -122,7 +184,11 @@
                 ctx.restore();
             }
         });
-        if (img.koji.complete) ctx.drawImage(img.koji, koji.x, koji.y, koji.w, koji.h);
+
+        // Efek Blink jika kebal
+        if (invulnerable % 10 < 5) {
+            if (img.koji.complete) ctx.drawImage(img.koji, koji.x, koji.y, koji.w, koji.h);
+        }
     }
 
     function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
@@ -130,7 +196,7 @@
     let loaded = 0;
     Object.values(img).forEach(i => {
         i.onload = () => { if (++loaded === 6) gameLoop(); };
-        i.onerror = () => { console.error("Gagal muat:", i.src); loaded++; if (loaded === 6) gameLoop(); };
+        i.onerror = () => { loaded++; if (loaded === 6) gameLoop(); };
     });
 </script>
 </body>
