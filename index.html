@@ -3,416 +3,246 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Koji Pro Adventure - Ultimate Edition</title>
+    <title>Koji Pro Adventure - Double Jump Edition</title>
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { 
-            margin: 0; padding: 0; overflow: hidden; 
-            background-color: #050505; 
-            display: flex; justify-content: center; align-items: center; 
-            height: 100vh; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-        }
-        canvas { 
-            border: 4px solid #333; 
-            box-shadow: 0 0 50px rgba(0,0,0,0.8); 
-            background-color: #4dbfff;
-            max-width: 100%;
-            height: auto;
-            image-rendering: pixelated;
-        }
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; z-index: 10;
-        }
-        .stats-container {
-            position: absolute; top: 20px; left: 20px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 15px 25px; border-radius: 15px;
-            border: 2px solid rgba(255, 215, 0, 0.5);
-            backdrop-filter: blur(5px);
-        }
-        .score-label { color: gold; font-size: 24px; font-weight: bold; letter-spacing: 1px; }
-        .lives-label { color: #ff4d4d; font-size: 28px; margin-top: 5px; }
+        * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: 'Arial', sans-serif; overflow: hidden; }
         
-        /* Pro Mobile Controls */
-        .controls-overlay {
-            position: fixed; bottom: 30px; width: 100%;
-            display: flex; justify-content: space-between; padding: 0 30px;
-            pointer-events: none;
-        }
-        .d-pad, .action-pad { pointer-events: auto; display: flex; gap: 15px; }
-        .control-btn {
-            width: 85px; height: 85px;
-            background: rgba(255, 255, 255, 0.15);
-            border: 3px solid rgba(255, 255, 255, 0.8);
-            border-radius: 50%;
-            display: flex; justify-content: center; align-items: center;
-            color: white; font-size: 35px;
-            backdrop-filter: blur(8px);
-            transition: transform 0.1s, background 0.1s;
-        }
-        .control-btn:active { transform: scale(0.85); background: rgba(255, 255, 255, 0.4); }
-        
-        @media (max-width: 600px) {
-            .control-btn { width: 70px; height: 70px; font-size: 28px; }
-        }
+        #game-container { position: relative; width: 100%; max-width: 800px; aspect-ratio: 4/3; background: #4dbfff; border: 4px solid #333; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+        /* UI Styling */
+        #hud { position: absolute; top: 10px; left: 10px; z-index: 20; pointer-events: none; }
+        .hud-box { background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 12px; border: 2px solid gold; }
+        .score-text { color: gold; font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .health-bar { font-size: 22px; }
+
+        /* Modern Controls - Diletakkan di bawah Game agar tidak menutupi layar */
+        #controls { width: 100%; max-width: 800px; display: flex; justify-content: space-between; padding: 20px; background: #111; }
+        .d-pad { display: flex; gap: 15px; }
+        .btn { width: 70px; height: 70px; background: #333; border: 3px solid #eee; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 30px; user-select: none; }
+        .btn:active { background: #666; transform: scale(0.9); }
+        .btn-jump { background: #d4a017; border-color: gold; width: 85px; height: 85px; }
     </style>
 </head>
 <body>
 
-<div id="ui-layer">
-    <div class="stats-container">
-        <div class="score-label">🍌 SCORE: <span id="scoreVal">0</span></div>
-        <div class="lives-label" id="livesVal">❤️❤️❤️</div>
+<div id="game-container">
+    <div id="hud">
+        <div class="hud-box">
+            <div class="score-text">🍌 SCORE: <span id="scoreVal">0</span></div>
+            <div class="health-bar" id="livesVal">❤️❤️❤️</div>
+        </div>
     </div>
+    <canvas id="gameCanvas"></canvas>
 </div>
 
-<canvas id="gameCanvas"></canvas>
-
-<div class="controls-overlay">
+<div id="controls">
     <div class="d-pad">
-        <div class="control-btn" id="btnLeft">◀</div>
-        <div class="control-btn" id="btnRight">▶</div>
+        <div class="btn" id="btnLeft">◀</div>
+        <div class="btn" id="btnRight">▶</div>
     </div>
-    <div class="action-pad">
-        <div class="control-btn" id="btnUp" style="background: rgba(255, 215, 0, 0.2); border-color: gold;">▲</div>
-    </div>
+    <div class="btn btn-jump" id="btnUp">▲</div>
 </div>
 
 <script>
-    /**
-     * KOJI PRO ADVENTURE - CORE ENGINE
-     * Versi 2.0: Optimized Physics & Infinite Climbing
-     */
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
 
-    // 1. Konfigurasi Resolusi (Biar tajam di semua device)
-    const baseW = 800;
-    const baseH = 600;
-    canvas.width = baseW;
-    canvas.height = baseH;
-
-    // 2. Asset Loader
+    // Assets
     const assets = {
         koji: new Image(), banana: new Image(), enemy: new Image(),
-        stone: new Image(), bg: new Image(), ramuan: new Image()
+        stone: new Image(), bg: new Image(), potion: new Image()
     };
     assets.koji.src = 'koji.png';
     assets.banana.src = 'banana.png';
     assets.enemy.src = 'enemy.png';
     assets.stone.src = 'stone.png';
     assets.bg.src = 'background.png';
-    assets.ramuan.src = 'ramuan.png';
+    assets.potion.src = 'ramuan.png';
 
-    // 3. Game State & Variables
+    // Game Constants
+    const worldHeight = 4000;
+    let cameraY = worldHeight - 600;
     let score = 0;
     let lives = 3;
-    let isInvulnerable = 0;
+    let invul = 0;
     let gameFrame = 0;
-    let keys = {};
     let particles = [];
-    
-    // World Config (Ketinggian 5000px agar bisa memanjat lama)
-    const worldWidth = 800;
-    const worldHeight = 5000;
-    let cameraY = worldHeight - baseH;
-    let smoothCamY = cameraY;
 
-    // 4. Entitas Utama: Koji
+    // Player Object
     const koji = {
-        x: 400, y: worldHeight - 150,
-        w: 75, h: 75,
-        vx: 0, vy: 0,
-        speed: 8,
-        jumpPower: -22,
-        gravity: 0.95,
-        friction: 0.85,
-        grounded: false,
-        direction: 'right'
+        x: 400, y: worldHeight - 150, w: 70, h: 70,
+        vx: 0, vy: 0, speed: 8, g: 0.8,
+        jumpPower: -16,
+        jumpsLeft: 2, // Fitur Double Jump
+        grounded: false, dir: 1
     };
 
-    // 5. Procedural Level Design (Platform Logic)
+    // Level Building
     let platforms = [];
-    function generateLevel() {
-        platforms = [];
-        // Dasar Tanah
-        platforms.push({ x: 0, y: worldHeight - 40, w: worldWidth, h: 60, type: 'ground' });
-
-        let currentY = worldHeight - 200;
-        while (currentY > 100) {
-            let width = 160 + Math.random() * 100;
-            platforms.push({
-                x: Math.random() * (worldWidth - width),
-                y: currentY,
-                w: width, h: 30,
-                move: Math.random() > 0.7,
-                mDir: 1,
-                mRange: 150 + Math.random() * 200,
-                startX: 0,
-                type: 'platform'
-            });
-            // Gap vertikal diatur agar lompatan (jumpPower -22) selalu sampai
-            currentY -= 160 + Math.random() * 40; 
-        }
-    }
-    generateLevel();
-
-    // 6. Items & Enemies Management
     let bananas = [];
     let enemies = [];
-    let potion = { x: 0, y: 0, w: 50, h: 50, active: false };
 
-    function initSpawns() {
-        bananas = []; enemies = [];
-        platforms.forEach((p, i) => {
-            if (i === 0) return;
-            // Taruh pisang di tengah platform
-            bananas.push({ 
-                x: p.x + (p.w / 2) - 20, y: p.y - 60, 
-                w: 45, h: 45, active: true, id: i 
-            });
+    function buildLevel() {
+        platforms = [{ x: 0, y: worldHeight - 40, w: 800, h: 40 }]; // Ground
+        
+        for (let i = 1; i < 25; i++) {
+            let py = (worldHeight - 150) - (i * 155); // Jarak antar lantai stabil
+            let pw = 150 + Math.random() * 100;
+            let px = Math.random() * (800 - pw);
             
-            // Taruh musuh di beberapa platform secara acak
-            if (i > 3 && i % 4 === 0) {
-                enemies.push({
-                    x: p.x, y: p.y - 55, w: 55, h: 55,
-                    startX: p.x, range: p.w - 55,
-                    speed: 2 + Math.random() * 2, dir: 1
-                });
-            }
-        });
-        // Taruh satu ramuan di ketinggian tengah
-        potion = { x: 300, y: worldHeight / 2, w: 50, h: 50, active: true };
-    }
-    initSpawns();
+            let plat = { x: px, y: py, w: pw, h: 25, move: i % 4 === 0, dir: 1, range: 150, startX: px };
+            platforms.push(plat);
 
-    // 7. Input Handler
-    window.addEventListener('keydown', e => keys[e.code] = true);
+            // Item placement
+            bananas.push({ x: px + pw/2 - 20, y: py - 50, w: 40, h: 40, active: true });
+
+            // Enemy placement - Dibuat lebih sering muncul
+            if (i > 2 && i % 3 === 0) {
+                enemies.push({ x: px, y: py - 55, w: 55, h: 55, startX: px, range: pw - 55, speed: 2, dir: 1 });
+            }
+        }
+    }
+    buildLevel();
+
+    // Input Controller
+    const keys = {};
+    window.addEventListener('keydown', e => {
+        if (e.code === 'ArrowUp') handleJump();
+        keys[e.code] = true;
+    });
     window.addEventListener('keyup', e => keys[e.code] = false);
 
-    function setupMobile(id, code) {
-        const el = document.getElementById(id);
-        const start = (e) => { e.preventDefault(); keys[code] = true; };
-        const end = (e) => { e.preventDefault(); keys[code] = false; };
-        el.addEventListener('touchstart', start); el.addEventListener('touchend', end);
-        el.addEventListener('mousedown', start); el.addEventListener('mouseup', end);
-    }
-    setupMobile('btnLeft', 'ArrowLeft'); setupMobile('btnRight', 'ArrowRight'); setupMobile('btnUp', 'ArrowUp');
-
-    // 8. Particle System (The "Pro" Touch)
-    function spawnEffect(x, y, color, count = 10) {
-        for(let i=0; i<count; i++) {
-            particles.push({
-                x, y,
-                vx: (Math.random() - 0.5) * 12,
-                vy: (Math.random() - 0.5) * 12,
-                size: 3 + Math.random() * 5,
-                life: 1.0,
-                decay: 0.02 + Math.random() * 0.03,
-                color
-            });
+    function handleJump() {
+        if (koji.jumpsLeft > 0) {
+            koji.vy = koji.jumpPower;
+            koji.jumpsLeft--;
+            koji.grounded = false;
+            spawnPart(koji.x + 35, koji.y + 70, '#fff', 8);
         }
     }
 
-    // 9. Core Update Loop
+    // Touch Controls
+    function bindTouch(id, code) {
+        const btn = document.getElementById(id);
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (code === 'ArrowUp') handleJump();
+            keys[code] = true;
+        });
+        btn.addEventListener('touchend', () => keys[code] = false);
+    }
+    bindTouch('btnLeft', 'ArrowLeft'); bindTouch('btnRight', 'ArrowRight'); bindTouch('btnUp', 'ArrowUp');
+
+    function spawnPart(x, y, color, n) {
+        for(let i=0; i<n; i++) particles.push({ x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 20, color });
+    }
+
     function update() {
         gameFrame++;
-        if (isInvulnerable > 0) isInvulnerable--;
+        if (invul > 0) invul--;
 
-        // Horizontal Movement with Friction
-        if (keys['ArrowLeft']) { koji.vx = -koji.speed; koji.direction = 'left'; }
-        else if (keys['ArrowRight']) { koji.vx = koji.speed; koji.direction = 'right'; }
-        else { koji.vx *= koji.friction; }
-
-        koji.x += koji.vx;
+        // Movement
+        if (keys['ArrowLeft']) { koji.vx = -koji.speed; koji.dir = -1; }
+        else if (keys['ArrowRight']) { koji.vx = koji.speed; koji.dir = 1; }
+        else { koji.vx *= 0.8; }
         
-        // Vertical Physics
-        koji.vy += koji.gravity;
+        koji.x += koji.vx;
+        koji.vy += koji.g;
         koji.y += koji.vy;
 
-        // Collision: World Bounds
+        // Collision Bounds
         if (koji.x < 0) koji.x = 0;
-        if (koji.x > worldWidth - koji.w) koji.x = worldWidth - koji.w;
+        if (koji.x > 730) koji.x = 730;
 
-        // Collision: Platforms
+        // Platform Collision
         koji.grounded = false;
         platforms.forEach(p => {
-            // Bergerakkan platform
             if (p.move) {
-                if (p.startX === 0) p.startX = p.x;
-                p.x += p.speed * p.mDir;
-                if (p.x > p.startX + p.mRange || p.x < p.startX - 50) p.mDir *= -1;
+                p.x += p.speed * p.dir;
+                if (p.x > p.startX + p.range || p.x < p.startX - 50) p.dir *= -1;
             }
-
-            // Cek Tabrakan dari Atas (Landing)
-            if (koji.vy >= 0 && 
-                koji.y + koji.h >= p.y && koji.y + koji.h <= p.y + p.h + 10 &&
-                koji.x + koji.w * 0.8 > p.x && koji.x + koji.w * 0.2 < p.x + p.w) {
+            if (koji.vy > 0 && koji.y + koji.h >= p.y && koji.y + koji.h <= p.y + 20 && koji.x + 50 > p.x && koji.x < p.x + p.w) {
                 koji.y = p.y - koji.h;
                 koji.vy = 0;
                 koji.grounded = true;
-                if (p.move) koji.x += p.speed * p.mDir; // Ikut gerak platform
+                koji.jumpsLeft = 2; // Reset jump saat mendarat
+                if (p.move) koji.x += p.speed * p.dir;
             }
         });
 
-        // Jump Logic
-        if (keys['ArrowUp'] && koji.grounded) {
-            koji.vy = koji.jumpPower;
-            koji.grounded = false;
-            spawnEffect(koji.x + koji.w/2, koji.y + koji.h, '#fff', 5);
-        }
+        // Camera
+        let targetY = koji.y - 300;
+        cameraY += (targetY - cameraY) * 0.1;
+        cameraY = Math.max(0, Math.min(worldHeight - 600, cameraY));
 
-        // Smooth Camera Follow
-        let targetCamY = koji.y - (baseH / 2);
-        smoothCamY += (targetCamY - smoothCamY) * 0.1; 
-        cameraY = Math.max(0, Math.min(worldHeight - baseH, smoothCamY));
-
-        // Item Collection
+        // Items
         bananas.forEach(b => {
-            if (b.active) {
-                let hover = Math.sin(gameFrame * 0.1) * 8;
-                if (koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.y + b.h + hover && koji.y + koji.h > b.y + hover) {
-                    b.active = false;
-                    score++;
-                    document.getElementById('scoreVal').innerText = score;
-                    spawnEffect(b.x + 20, b.y + 20, 'gold', 15);
-                    setTimeout(() => b.active = true, 8000); // Respawn
-                }
+            if (b.active && koji.x < b.x + b.w && koji.x + koji.w > b.x && koji.y < b.y + b.h && koji.y + koji.h > b.y) {
+                b.active = false; score++; document.getElementById('scoreVal').innerText = score;
+                spawnPart(b.x+20, b.y+20, 'gold', 10);
             }
         });
 
-        // Potion Logic
-        if (potion.active && koji.x < potion.x + potion.w && koji.x + koji.w > potion.x && koji.y < potion.y + potion.h && koji.y + koji.h > potion.y) {
-            if (lives < 3) {
-                lives++;
-                updateHearts();
-                potion.active = false;
-                spawnEffect(potion.x + 25, potion.y + 25, '#00ff00', 20);
-            }
-        }
-
-        // Enemy Collision
+        // Enemy Logic
         enemies.forEach(e => {
             e.x += e.speed * e.dir;
             if (e.x > e.startX + e.range || e.x < e.startX) e.dir *= -1;
-
-            if (isInvulnerable === 0 && koji.x < e.x + e.w - 10 && koji.x + koji.w > e.x + 10 && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
-                lives--;
-                isInvulnerable = 100;
-                updateHearts();
-                spawnEffect(koji.x + 35, koji.y + 35, 'red', 15);
-                if (lives <= 0) { alert("Game Over! Score: " + score); location.reload(); }
+            if (invul === 0 && koji.x < e.x + e.w - 10 && koji.x + koji.w > e.x + 10 && koji.y < e.y + e.h && koji.y + koji.h > e.y) {
+                lives--; invul = 60;
+                document.getElementById('livesVal').innerText = "❤️".repeat(lives);
+                spawnPart(koji.x+35, koji.y+35, 'red', 15);
+                if (lives <= 0) location.reload();
             }
         });
 
-        // Update Particles
-        particles.forEach((p, i) => {
-            p.x += p.vx; p.y += p.vy; p.life -= p.decay;
-            if (p.life <= 0) particles.splice(i, 1);
-        });
+        particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life--; if (p.life <= 0) particles.splice(i, 1); });
     }
 
-    function updateHearts() {
-        let h = ""; for(let i=0; i<lives; i++) h += "❤️";
-        document.getElementById('livesVal').innerText = h;
-    }
-
-    // 10. Core Draw Loop
     function draw() {
-        // Clear Screen with Sky Gradient
         ctx.fillStyle = '#4dbfff';
-        ctx.fillRect(0, 0, baseW, baseH);
+        ctx.fillRect(0, 0, 800, 600); // Clear Screen
 
         ctx.save();
         ctx.translate(0, -cameraY);
 
-        // A. Parallax Background
+        // Background
         if (assets.bg.complete) {
-            // Draw multiple background layers to cover full height
-            for (let bgY = 0; bgY < worldHeight; bgY += baseH) {
-                ctx.drawImage(assets.bg, 0, bgY, baseW, baseH);
-            }
+            for (let i = 0; i < worldHeight; i += 600) ctx.drawImage(assets.bg, 0, i, 800, 600);
         }
 
-        // B. Draw Platforms
+        // Platforms
         platforms.forEach(p => {
+            ctx.fillStyle = '#444';
+            ctx.fillRect(p.x, p.y, p.w, p.h);
             if (assets.stone.complete) {
-                // Tiling stone texture
-                for (let x = 0; x < p.w; x += 40) {
-                    ctx.drawImage(assets.stone, p.x + x, p.y, 40, p.h);
-                }
-            } else {
-                ctx.fillStyle = '#555';
-                ctx.fillRect(p.x, p.y, p.w, p.h);
+                for (let x = 0; x < p.w; x += 40) ctx.drawImage(assets.stone, p.x + x, p.y, 40, p.h);
             }
         });
 
-        // C. Draw Items
-        bananas.forEach((b, i) => {
-            if (b.active && assets.banana.complete) {
-                let hover = Math.sin(gameFrame * 0.1 + i) * 8;
-                ctx.drawImage(assets.banana, b.x, b.y + hover, b.w, b.h);
-            }
-        });
-        
-        if (potion.active && assets.ramuan.complete) {
-            ctx.drawImage(assets.ramuan, potion.x, potion.y, potion.w, potion.h);
+        // Entities
+        bananas.forEach(b => { if (b.active && assets.banana.complete) ctx.drawImage(assets.banana, b.x, b.y + Math.sin(gameFrame*0.1)*5, b.w, b.h); });
+        enemies.forEach(e => { if (assets.enemy.complete) ctx.drawImage(assets.enemy, e.x, e.y, e.w, e.h); });
+
+        // Koji
+        if (invul % 10 < 5 && assets.koji.complete) {
+            ctx.save();
+            if (koji.dir === -1) { ctx.translate(koji.x + koji.w, koji.y); ctx.scale(-1, 1); ctx.drawImage(assets.koji, 0, 0, koji.w, koji.h); }
+            else { ctx.drawImage(assets.koji, koji.x, koji.y, koji.w, koji.h); }
+            ctx.restore();
         }
 
-        // D. Draw Enemies
-        enemies.forEach(e => {
-            if (assets.enemy.complete) {
-                ctx.drawImage(assets.enemy, e.x, e.y, e.w, e.h);
-            }
-        });
-
-        // E. Draw Koji with Blink Effect (Invulnerable)
-        if (isInvulnerable % 10 < 5) {
-            if (assets.koji.complete) {
-                ctx.save();
-                // Flip image based on direction
-                if (koji.direction === 'left') {
-                    ctx.scale(-1, 1);
-                    ctx.drawImage(assets.koji, -koji.x - koji.w, koji.y, koji.w, koji.h);
-                } else {
-                    ctx.drawImage(assets.koji, koji.x, koji.y, koji.w, koji.h);
-                }
-                ctx.restore();
-            } else {
-                ctx.fillStyle = 'orange';
-                ctx.fillRect(koji.x, koji.y, koji.w, koji.h);
-            }
-        }
-
-        // F. Draw Particles
-        particles.forEach(p => {
-            ctx.globalAlpha = p.life;
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
-        ctx.globalAlpha = 1.0;
+        // Particles
+        particles.forEach(p => { ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 4, 4); });
 
         ctx.restore();
     }
 
-    // Start Engine
-    function gameLoop() {
-        update();
-        draw();
-        requestAnimationFrame(gameLoop);
-    }
-
-    // Wait for critical assets
-    assets.bg.onload = () => {
-        gameLoop();
-    };
-    
-    // Fallback if images fail to load
-    setTimeout(() => { if(gameFrame === 0) gameLoop(); }, 2000);
-
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    loop();
 </script>
 </body>
 </html>
